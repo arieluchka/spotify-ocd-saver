@@ -1,0 +1,4 @@
+musicxmatch_api==1.0.7.1
+spotipy==2.25.1
+
+lrclibapi==0.3.1
