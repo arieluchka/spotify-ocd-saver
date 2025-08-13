@@ -30,7 +30,9 @@ alternative to musixmatch:
 
 <br>
 
-- Table of songs (title+artist+album+duration + spotify_id + ISRC + LRCLIB_id)
+- Table of songs (id + title+artist+album+duration + Status(0=NOT_SCANNED,1=SCANNED_CLEAN,2=SCANNED_CONTAMINATED)+ spotify_id + ISRC + LRCLIB_id)
+
+- Table for trigger timestamps (trigger_id + song_id + start_time_ms + end_time_ms + created_at)
 
 <br>
 
