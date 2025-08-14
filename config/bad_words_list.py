@@ -10,7 +10,7 @@ death_words = [
     "mortal",
     "mortality",
 
-    "demise", "decease", "deceased", "passing", "expiration",
+    "demise", "decease", "deceased", "expiration",
     "mortality", "mortal", "fatality", "lifeless", "deadness",
 
     # "expire",
