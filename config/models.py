@@ -10,6 +10,11 @@ class SongStatus(IntEnum):
     SCANNED_CLEAN = 1
     SCANNED_CONTAMINATED = 2
 
+class LyricsStatus(IntEnum):
+    """status of lyrics found"""
+    NO_LYRICS_FOUND = 0
+    LYRICS_FOUND = 1
+    SYNCED_LYRICS_FOUND = 2
 
 @dataclass
 class Song:

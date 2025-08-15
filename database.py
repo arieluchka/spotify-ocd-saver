@@ -1,10 +1,10 @@
 import sqlite3
 import os
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from contextlib import contextmanager
 from datetime import datetime
 
-from models import Song, TriggerTimestamp, SongStatus
+from config.models import Song, TriggerTimestamp, SongStatus
 
 
 class DatabaseManager:

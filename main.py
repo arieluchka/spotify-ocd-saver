@@ -2,21 +2,21 @@ import time
 import re
 import logging
 import threading
-from typing import Tuple, List, Optional
+from typing import Tuple, List
 
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
+from spotipy.oauth2 import SpotifyOAuth
 from lrclib import LrcLibAPI
 from lrclib.models import Lyrics
 from lrclib.exceptions import NotFoundError
 
 from internal.secrets import CLIENT_SECRET, CLIENT_ID
-from models import *
+from config.models import *
 from database import get_database
 from config.bad_words_list import death_words
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('spotify_ocd_saver.log'),
@@ -240,7 +240,7 @@ def spotify_monitoring_thread():
     clean_song = True
     trigger_timestamps_list = []
     current_trigger_index = 0
-    buffer_ms = 1000
+    buffer_ms = 3000
     
     logger.info("Starting Spotify monitoring thread...")
     
