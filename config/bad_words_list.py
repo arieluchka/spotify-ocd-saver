@@ -12,6 +12,11 @@ death_words = [
 
     "demise", "decease", "deceased", "expiration",
     "mortality", "mortal", "fatality", "lifeless", "deadness",
+    "למות",
+    "מוות",
+    "אמות",
+    "ימות",
+    
 
     # "expire",
     # "expired",

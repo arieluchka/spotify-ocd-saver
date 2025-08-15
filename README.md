@@ -54,3 +54,15 @@ alternative to musixmatch:
 - keep track of the queue order, and if it changes, trigger a scan of queue items and aggregate them
 - (Entirly new thing) - let user create more specific timestamps for bad words (to over write the default line skip)
 
+
+---
+
+# User features
+1) User can choose default behavior on songs with triggering words
+    - Skip song if there is any triggering word
+    - Skip song parts (timestamps) that have triggering words (can also choose buffer (how much time to skip in advance))
+    - Dont skip any song
+
+2) User can choose default behavior on what happens if no synced lyrics was found
+    - skip/dont skip songs that no lyrics was found
+    - skip/dont skip songs that have bad word in lyrics, but we dont know 
