@@ -12,8 +12,13 @@ from lrclib.exceptions import NotFoundError
 
 from internal.secrets import CLIENT_SECRET, CLIENT_ID
 from config.models import *
-from database import get_database
-from config.bad_words_list import death_words
+from services.ocdify_db.ocdify_db import get_database
+from services.trigger_service.trigger_service import get_trigger_service
+from services.user_service.user_service import get_user_service
+from services.lyrics_processor import (
+    create_trigger_timestamps_from_synced_lyrics,
+    search_plain_lyrics_for_triggers
+)
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -27,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 api = LrcLibAPI(user_agent="spotify-ocd-saver/0.1.0")
 db = get_database()
+trigger_service = get_trigger_service(db)
+user_service = get_user_service(db)
 
 # todo: fine grain the scopes needed
 #https://developer.spotify.com/documentation/web-api/concepts/scopes
@@ -40,7 +47,7 @@ scopes = [
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
-    redirect_uri = "https://arieluchka.com",
+    redirect_uri = "http://127.0.0.1:5000/callback",
     scope = scopes
 ))
 
@@ -104,132 +111,82 @@ class SyncLyricsScraper:
 
 
 
-def parse_lrc_timestamp(timestamp_str: str) -> int:
-    """Parse LRC timestamp format [mm:ss.xx] to milliseconds"""
-    # Remove brackets and split
-    timestamp_str = timestamp_str.strip('[]')
-    parts = timestamp_str.split(':')
-    minutes = int(parts[0])
-    
-    # Handle seconds and centiseconds
-    seconds_part = parts[1].split('.')
-    seconds = int(seconds_part[0])
-    centiseconds = int(seconds_part[1]) if len(seconds_part) > 1 else 0
-    
-    # Convert to milliseconds
-    total_ms = (minutes * 60 + seconds) * 1000 + centiseconds * 10
-    return total_ms
 
-
-def process_song_for_trigger_words(song: Song, lyrics: Lyrics) -> List[Tuple[int, int]]:
+def queue_scanning_thread():
     """
-    Process song lyrics to find trigger words and return their timestamps.
-    
-    :param song: Song object
-    :param lyrics: Lyrics object with synced lyrics
-    :return: List of tuples (start_time_ms, end_time_ms) for trigger sections
+    Periodically scan Spotify queue for unanalyzed songs.
+    Runs every 300 seconds (5 minutes) to check the queue and analyze new songs.
     """
-    if not lyrics.synced_lyrics:
-        logger.warning(f"No synced lyrics found for {song.title} by {song.artist}")
-        return []
+    logger.info("Starting queue scanning thread...")
     
-    trigger_timestamps = []
-    trigger_words_found = set()
-    
-    # Split lyrics into lines
-    lines = lyrics.synced_lyrics.strip().split('\n')
-    
-    for i, line in enumerate(lines):
-        # Parse timestamp and lyrics
-        if not line.strip() or not line.startswith('['):
-            continue
-            
+    while True:
         try:
-            # Extract timestamp and lyrics text
-            timestamp_match = re.match(r'\[([^\]]+)\](.*)$', line)
-            if not timestamp_match:
+            time.sleep(300)  # Wait 5 minutes between scans
+            
+            logger.info("Starting periodic queue scan...")
+            
+            # Get current queue
+            try:
+                queue = sp.queue()
+                if not queue or 'queue' not in queue:
+                    logger.debug("No queue available or empty queue")
+                    continue
+                
+                queue_tracks = queue['queue']
+                logger.info(f"Found {len(queue_tracks)} tracks in queue")
+                
+                new_songs_count = 0
+                existing_songs_count = 0
+                
+                for track in queue_tracks:
+                    if not track or 'id' not in track:
+                        continue
+                    
+                    spotify_id = track['id']
+                    
+                    # Check if song already exists in database
+                    existing_song = db.get_song_by_spotify_id(spotify_id)
+                    
+                    if existing_song:
+                        existing_songs_count += 1
+                        
+                        # If song exists but hasn't been scanned, trigger scan
+                        if existing_song.status == SongStatus.NOT_SCANNED:
+                            logger.info(f"Triggering scan for unscanned song: '{existing_song.title}' by {existing_song.artist}")
+                            threading.Thread(target=scan_song_in_background, args=(existing_song, None), daemon=True).start()
+                    else:
+                        # Add new song to database and scan it
+                        logger.info(f"Adding new queue song: '{track['name']}' by {track['artists'][0]['name']}")
+                        
+                        new_song = Song(
+                            title=track['name'],
+                            artist=track['artists'][0]['name'],
+                            album=track['album']['name'],
+                            duration_ms=track['duration_ms'],
+                            spotify_id=spotify_id,
+                            status=SongStatus.NOT_SCANNED
+                        )
+                        
+                        song_id = db.add_new_song(new_song)
+                        new_song.id = song_id
+                        new_songs_count += 1
+                        
+                        # Scan in background
+                        logger.info(f"Triggering scan for new queue song: '{new_song.title}'")
+                        threading.Thread(target=scan_song_in_background, args=(new_song, None), daemon=True).start()
+                
+                logger.info(f"Queue scan completed. New songs: {new_songs_count}, Existing: {existing_songs_count}")
+                
+            except Exception as queue_error:
+                logger.warning(f"Error accessing Spotify queue: {queue_error}")
+                # Queue access might fail due to permissions or player state
                 continue
                 
-            timestamp_str = timestamp_match.group(1)
-            lyrics_text = timestamp_match.group(2).strip()
-            
-            if not lyrics_text:  # Skip empty lines
-                continue
-            
-            # Check for trigger words (case insensitive)
-            lyrics_lower = lyrics_text.lower()
-            line_has_trigger = False
-            
-            for trigger_word in death_words:
-                # Use word boundaries to match whole words only
-                pattern = r'\b' + re.escape(trigger_word.lower()) + r'\b'
-                if re.search(pattern, lyrics_lower):
-                    line_has_trigger = True
-                    trigger_words_found.add(trigger_word)
-                    logger.debug(f"Found trigger word '{trigger_word}' in line: {lyrics_text}")
-                    break  # Only process this line once even if multiple triggers
-            
-            if line_has_trigger:
-                start_time_ms = parse_lrc_timestamp(timestamp_str)
-                
-                # Find end time by looking at next line's timestamp
-                end_time_ms = start_time_ms + 5000  # Default 5 second buffer
-                
-                # Try to find the next line with a timestamp
-                for j in range(i + 1, len(lines)):
-                    next_line = lines[j].strip()
-                    if next_line and next_line.startswith('['):
-                        next_timestamp_match = re.match(r'\[([^\]]+)\]', next_line)
-                        if next_timestamp_match:
-                            end_time_ms = parse_lrc_timestamp(next_timestamp_match.group(1))
-                            break
-                
-                trigger_timestamps.append((start_time_ms, end_time_ms))
-                logger.info(f"Added trigger timestamp: {start_time_ms}-{end_time_ms}ms for '{lyrics_text}'")
-        
         except Exception as e:
-            logger.warning(f"Error processing lyrics line '{line}': {e}")
+            logger.error(f"Error in queue scanning thread: {e}")
+            # Continue running even if there's an error
             continue
-    
-    # Combine nearby trigger timestamps (less than 5 seconds apart)
-    if trigger_timestamps:
-        logger.info(f"Found {len(trigger_timestamps)} initial trigger sections in '{song.title}' by {song.artist}")
-        
-        # Sort timestamps by start time
-        trigger_timestamps.sort(key=lambda x: x[0])
-        
-        # Combine nearby triggers
-        combined_timestamps = []
-        current_start, current_end = trigger_timestamps[0]
-        
-        for i in range(1, len(trigger_timestamps)):
-            next_start, next_end = trigger_timestamps[i]
-            
-            # If less than 5 seconds between end of current and start of next
-            if next_start - current_end < 5000:
-                # Extend current trigger to include the next one
-                current_end = max(current_end, next_end)
-                logger.debug(f"Combined triggers: extending to {current_start}-{current_end}ms")
-            else:
-                # Gap is too large, save current trigger and start new one
-                combined_timestamps.append((current_start, current_end))
-                current_start, current_end = next_start, next_end
-        
-        # Don't forget the last trigger
-        combined_timestamps.append((current_start, current_end))
-        
-        if len(combined_timestamps) < len(trigger_timestamps):
-            logger.info(f"Combined {len(trigger_timestamps)} triggers into {len(combined_timestamps)} sections")
-            for i, (start, end) in enumerate(combined_timestamps):
-                logger.info(f"  Combined trigger {i+1}: {start}-{end}ms ({(end-start)/1000:.1f}s)")
-        
-        trigger_timestamps = combined_timestamps
-        logger.info(f"Final trigger sections: {len(trigger_timestamps)}")
-        logger.info(f"Trigger words found: {', '.join(trigger_words_found)}")
-    else:
-        logger.info(f"No trigger words found in '{song.title}' by {song.artist}")
-    
-    return trigger_timestamps
+
 
 def spotify_monitoring_thread():
     """
@@ -283,7 +240,7 @@ def spotify_monitoring_thread():
                         clean_song = True  # Assume clean until scanned
                         trigger_timestamps_list = []
                         # Scan in background
-                        threading.Thread(target=scan_song_in_background, args=(db_song,), daemon=True).start()
+                        threading.Thread(target=scan_song_in_background, args=(db_song, None), daemon=True).start()
                 else:
                     # Add new song to database
                     logger.info("Adding new song to database...")
@@ -302,7 +259,7 @@ def spotify_monitoring_thread():
                     trigger_timestamps_list = []
                     
                     # Scan in background
-                    threading.Thread(target=scan_song_in_background, args=(new_song,), daemon=True).start()
+                    threading.Thread(target=scan_song_in_background, args=(new_song, None), daemon=True).start()
             else:
                 # Same song playing - check if scan status has changed for unscanned songs
                 if clean_song and not trigger_timestamps_list:  # Only check if we think it's clean and have no triggers
@@ -350,7 +307,7 @@ def spotify_monitoring_thread():
         time.sleep(1)
 
 
-def scan_song_in_background(song: Song):
+def scan_song_in_background(song: Song, user_id: Optional[int] = None):
     """Scan a song for trigger words in the background"""
     try:
         logger.info(f"Starting background scan for '{song.title}' by {song.artist}")
@@ -364,27 +321,52 @@ def scan_song_in_background(song: Song):
             db.update_song_status(song.id, SongStatus.SCANNED_CLEAN)
             return
         
-        # Process lyrics for trigger words
-        trigger_timestamps = process_song_for_trigger_words(song, lyrics)
+        # Check if we have synced lyrics
+        if lyrics.synced_lyrics:
+            logger.info(f"Found synced lyrics for '{song.title}', processing for triggers...")
+            # Use the new lyrics processor for synced lyrics
+            trigger_timestamps_objs = create_trigger_timestamps_from_synced_lyrics(
+                synced_lyrics=lyrics.synced_lyrics,
+                song_id=song.id,
+                trigger_service=trigger_service,
+                user_id=user_id
+            )
+            
+            if trigger_timestamps_objs:
+                # Song has triggers, mark as contaminated and save timestamps
+                db.update_song_status(song.id, SongStatus.SCANNED_CONTAMINATED)
+                
+                for trigger in trigger_timestamps_objs:
+                    db.add_trigger_of_song(trigger)
+                
+                logger.info(f"Saved {len(trigger_timestamps_objs)} trigger timestamps for '{song.title}'")
+            else:
+                # Song is clean
+                db.update_song_status(song.id, SongStatus.SCANNED_CLEAN)
+                logger.info(f"Song '{song.title}' marked as clean (synced lyrics)")
         
-        if trigger_timestamps:
-            # Song has triggers, mark as contaminated and save timestamps
-            db.update_song_status(song.id, SongStatus.SCANNED_CONTAMINATED)
+        elif lyrics.plain_lyrics:
+            logger.info(f"Found plain lyrics for '{song.title}', checking for triggers...")
+            # Update song with non-synced lyrics ID if available
+            if hasattr(lyrics, 'id') and lyrics.id:
+                db.update_song_not_sync_lrclib_id(song.id, str(lyrics.id))
             
-            for start_time, end_time in trigger_timestamps:
-                trigger = TriggerTimestamp(
-                    trigger_id=1,  # Using 1 for death words category
-                    song_id=song.id,
-                    start_time_ms=start_time,
-                    end_time_ms=end_time
-                )
-                db.add_trigger_of_song(trigger)
+            # Use the new lyrics processor for plain lyrics
+            has_triggers = search_plain_lyrics_for_triggers(
+                lyrics.plain_lyrics, 
+                trigger_service, 
+                user_id
+            )
             
-            logger.info(f"Saved {len(trigger_timestamps)} trigger timestamps for '{song.title}'")
+            if has_triggers:
+                db.update_song_status(song.id, SongStatus.SCANNED_CONTAMINATED)
+                logger.info(f"Song '{song.title}' marked as contaminated (plain lyrics)")
+            else:
+                db.update_song_status(song.id, SongStatus.SCANNED_CLEAN)
+                logger.info(f"Song '{song.title}' marked as clean (plain lyrics)")
         else:
-            # Song is clean
+            logger.warning(f"No usable lyrics found for '{song.title}' by {song.artist}")
             db.update_song_status(song.id, SongStatus.SCANNED_CLEAN)
-            logger.info(f"Song '{song.title}' marked as clean")
     
     except NotFoundError:
         logger.warning(f"Lyrics not found for '{song.title}' by {song.artist}")
@@ -415,6 +397,11 @@ def main():
         logger.info("Starting monitoring thread...")
         monitor_thread = threading.Thread(target=spotify_monitoring_thread, daemon=True)
         monitor_thread.start()
+        
+        # Start queue scanning thread
+        logger.info("Starting queue scanning thread...")
+        queue_thread = threading.Thread(target=queue_scanning_thread, daemon=True)
+        queue_thread.start()
         
         logger.info("Spotify OCD Saver is now running. Press Ctrl+C to stop.")
         

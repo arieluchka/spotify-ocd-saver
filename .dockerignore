@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database (will be mounted as volume)
+*.db
+
+# Documentation
+README.md
+TODOS.md
+*.md
+
+# Test files
+tests/
+
+# Flow diagram
+*.drawio
+
+# Environment files (should be mounted or configured separately)
+.env

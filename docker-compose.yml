@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  spotify-ocd-saver:
+    build: .
+    container_name: spotify-ocd-saver
+    restart: unless-stopped
+    volumes:
+      # Mount data directory for persistence
+      - ./data:/app/data
+      # Mount config for easy editing
+      - ./config:/app/config:ro
+      # Mount logs
+      - ./logs:/app/logs
+    environment:
+      # Set database path to persistent volume
+      - DB_PATH=/app/data/spotify_ocd_saver.db
+      - LOG_PATH=/app/logs/spotify_ocd_saver.log
+    ports:
+      # Expose web interface if needed
+      - "5000:5000"
+    # Network mode host to access local Spotify
+    network_mode: host
+    
+    # Optional: Add environment file
+    # env_file:
+    #   - .env

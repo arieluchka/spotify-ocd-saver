@@ -1,0 +1,3 @@
+"""
+LyricsFinderService and related interfaces
+"""

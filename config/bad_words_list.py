@@ -6,6 +6,7 @@ death_words = [
     "dies",
     "dying",
     "undead",
+    "deadly",
     "lifeless",
     "mortal",
     "mortality",
