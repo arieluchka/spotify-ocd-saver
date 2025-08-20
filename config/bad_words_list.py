@@ -18,7 +18,6 @@ death_words = [
     "אמות",
     "ימות",
     
-
     # "expire",
     # "expired",
     # "expires",
@@ -30,3 +29,5 @@ death_words = [
     # "kills",
     # "killing"
 ]
+
+# death,dead,die,died,dies,dying,undead,deadly,lifeless,mortal,mortality,decease,deceased,mortality,mortal,lifeless,deadness,למות,מוות,אמות,ימות

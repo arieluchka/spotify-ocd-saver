@@ -3,7 +3,7 @@ from typing import Optional, List
 import logging
 import json
 
-from .lyrics_searcher_interface import LyricsSearcherInterface, LyricsSearchResult
+from services.lyrics_finder_service.lyrics_searcher_interface import LyricsSearcherInterface, LyricsSearchResult
 from config.models import SyncedLyricsLine
 
 logger = logging.getLogger(__name__)

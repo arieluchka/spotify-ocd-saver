@@ -1,5 +1,6 @@
 from config.models import Song
 
+
 class OCDify:
     def __init__(self):
         ...

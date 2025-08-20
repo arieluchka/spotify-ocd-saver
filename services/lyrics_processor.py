@@ -165,9 +165,10 @@ def create_trigger_timestamps_from_synced_lyrics(
         trigger_timestamps.append(TriggerTimestamp(
             user_id=user_id,
             song_id=song_id,
-            category_id=category_id,
+            category_id=category_id,  # Use category_id to match database schema
             trigger_word=trigger_word,
-            timestamp_ms=start_time_ms
+            start_time_ms=start_time_ms,
+            end_time_ms=end_time_ms
         ))
     
     return trigger_timestamps

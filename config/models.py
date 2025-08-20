@@ -55,7 +55,7 @@ class Song:
 class TriggerTimestamp:
     """Represents a trigger word timestamp in a song"""
     id: Optional[int] = None
-    trigger_id: int = 0  # category_id for compatibility
+    category_id: int = 0  # Keep as category_id to match database schema
     song_id: int = 0
     user_id: Optional[int] = None  # Track which user triggered this
     start_time_ms: int = 0

@@ -83,6 +83,7 @@ INSERT_USER = '''
 '''
 
 SELECT_USER_BY_SPOTIFY_ID = 'SELECT * FROM users WHERE spotify_user_id = ?'
+SELECT_USER_BY_ID = 'SELECT * FROM users WHERE id = ?'
 
 UPDATE_USER_TOKENS = '''
     UPDATE users SET access_token = ?, refresh_token = ?, token_expires_at = ?, updated_at = CURRENT_TIMESTAMP
@@ -105,6 +106,16 @@ UPDATE_SONG_STATUS = '''
 
 UPDATE_SONG_NOT_SYNC_LRCLIB_ID = '''
     UPDATE songs SET not_sync_lrclib_id = ?, updated_at = CURRENT_TIMESTAMP 
+    WHERE id = ?
+'''
+
+UPDATE_SONG_LRCLIB_ID = '''
+    UPDATE songs SET lrclib_id = ?, updated_at = CURRENT_TIMESTAMP 
+    WHERE id = ?
+'''
+
+UPDATE_SONG_ISRC = '''
+    UPDATE songs SET isrc = ?, updated_at = CURRENT_TIMESTAMP 
     WHERE id = ?
 '''
 
@@ -162,8 +173,8 @@ UPDATE_TRIGGER_CATEGORY = '''
 
 # Trigger timestamp queries
 INSERT_TRIGGER_TIMESTAMP = '''
-    INSERT INTO trigger_timestamps (user_id, song_id, category_id, trigger_word, timestamp_ms)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO trigger_timestamps (user_id, song_id, category_id, trigger_word, start_time_ms, end_time_ms)
+    VALUES (?, ?, ?, ?, ?, ?)
 '''
 
 SELECT_TRIGGER_TIMESTAMPS_BY_USER = '''
@@ -175,7 +186,7 @@ SELECT_TRIGGER_TIMESTAMPS_BY_USER = '''
 SELECT_TRIGGER_TIMESTAMPS_BY_SONG = '''
     SELECT * FROM trigger_timestamps 
     WHERE song_id = ? AND user_id = ?
-    ORDER BY timestamp_ms
+    ORDER BY start_time_ms
 '''
 
 SELECT_TRIGGERS_BY_CATEGORY = '''
@@ -183,7 +194,7 @@ SELECT_TRIGGERS_BY_CATEGORY = '''
     FROM trigger_timestamps tt
     JOIN songs s ON tt.song_id = s.id
     WHERE tt.category_id = ? AND tt.user_id = ?
-    ORDER BY s.title, tt.timestamp_ms
+    ORDER BY s.title, tt.start_time_ms
 '''
 
 DELETE_TRIGGERS_BY_CATEGORY = 'DELETE FROM trigger_timestamps WHERE category_id = ? AND user_id = ?'

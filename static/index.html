@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCDify - Spotify OCD Saver</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <i class="fab fa-spotify"></i>
+                <h1>OCDify</h1>
+            </div>
+            <div class="user-info" id="userInfo" style="display: none;">
+                <span id="userName"></span>
+                <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+            </div>
+        </header>
+
+        <!-- Login Section -->
+        <div class="login-section" id="loginSection">
+            <div class="login-card">
+                <h2>Welcome to OCDify</h2>
+                <p>Your Spotify OCD Saver - Skip trigger words automatically</p>
+                <button id="spotifyLoginBtn" class="btn btn-spotify">
+                    <i class="fab fa-spotify"></i>
+                    Login with Spotify
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div class="dashboard" id="dashboard" style="display: none;">
+            <!-- Status Section -->
+            <div class="status-section">
+                <div class="status-card">
+                    <h3>Monitoring Status</h3>
+                    <div class="status-indicator" id="monitoringStatus">
+                        <span class="status-dot offline"></span>
+                        <span>Offline</span>
+                    </div>
+                    <div class="status-controls">
+                        <button id="startMonitoring" class="btn btn-success">Start Monitoring</button>
+                        <button id="stopMonitoring" class="btn btn-danger">Stop Monitoring</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Section -->
+            <div class="stats-section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4>Total Songs</h4>
+                        <span class="stat-number" id="totalSongs">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Contaminated</h4>
+                        <span class="stat-number contaminated" id="contaminatedSongs">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Clean Songs</h4>
+                        <span class="stat-number clean" id="cleanSongs">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Categories</h4>
+                        <span class="stat-number" id="userCategories">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trigger Categories Section -->
+            <div class="categories-section">
+                <div class="section-header">
+                    <h3>Trigger Categories</h3>
+                    <button id="addCategoryBtn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i>
+                        Add Category
+                    </button>
+                </div>
+                <div id="categoriesList" class="categories-list">
+                    <!-- Categories will be populated here -->
+                </div>
+            </div>
+
+            <!-- Contaminated Songs Section -->
+            <div class="songs-section">
+                <div class="section-header">
+                    <h3>Contaminated Songs</h3>
+                    <div class="search-box">
+                        <input type="text" id="songSearch" placeholder="Search songs...">
+                        <button id="searchBtn" class="btn btn-secondary">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="songsList" class="songs-list">
+                    <!-- Songs will be populated here -->
+                </div>
+            </div>
+
+            <!-- Lyrics Scanner Section -->
+            <div class="scanner-section">
+                <div class="section-header">
+                    <h3>Lyrics Scanner</h3>
+                </div>
+                <div class="scanner-form">
+                    <textarea id="lyricsInput" placeholder="Paste lyrics here to scan for trigger words..."></textarea>
+                    <button id="scanLyricsBtn" class="btn btn-primary">Scan Lyrics</button>
+                </div>
+                <div id="scanResults" class="scan-results" style="display: none;">
+                    <!-- Scan results will be shown here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Modal -->
+    <div id="categoryModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Add Category</h3>
+                <span class="close" id="closeModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="categoryForm">
+                    <div class="form-group">
+                        <label for="categoryName">Category Name</label>
+                        <input type="text" id="categoryName" name="categoryName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="categoryWords">Trigger Words (comma separated)</label>
+                        <textarea id="categoryWords" name="categoryWords" placeholder="word1, word2, word3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="categoryActive" name="categoryActive" checked>
+                            Active
+                        </label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" id="cancelCategory" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notifications" class="notifications"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

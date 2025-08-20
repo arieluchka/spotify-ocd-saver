@@ -121,12 +121,26 @@ class OCDifyDb:
             conn.commit()
             return cursor.rowcount > 0
 
+    def update_song_lrclib_id(self, song_id: int, lrclib_id: str) -> bool:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(UPDATE_SONG_LRCLIB_ID, (lrclib_id, song_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def update_song_isrc(self, song_id: int, isrc: str) -> bool:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(UPDATE_SONG_ISRC, (isrc, song_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def add_trigger_of_song(self, trigger: TriggerTimestamp) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(INSERT_TRIGGER_TIMESTAMP, (
                 trigger.user_id, trigger.song_id, trigger.category_id,
-                trigger.trigger_word, trigger.timestamp_ms
+                trigger.trigger_word, trigger.start_time_ms, trigger.end_time_ms
             ))
             conn.commit()
             return cursor.lastrowid
@@ -145,10 +159,10 @@ class OCDifyDb:
             rows = cursor.fetchall()
             return [self._row_to_trigger(row) for row in rows]
 
-    def delete_triggers_by_category(self, category_id: int) -> int:
+    def delete_triggers_by_category(self, category_id: int, user_id: int) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(DELETE_TRIGGERS_BY_CATEGORY, (category_id,))
+            cursor.execute(DELETE_TRIGGERS_BY_CATEGORY, (category_id, user_id))
             conn.commit()
             return cursor.rowcount
 
@@ -198,6 +212,15 @@ class OCDifyDb:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(SELECT_USER_BY_SPOTIFY_ID, (spotify_user_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_user(row)
+            return None
+
+    def get_user_by_id(self, user_id: int) -> Optional[User]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_USER_BY_ID, (user_id,))
             row = cursor.fetchone()
             if row:
                 return self._row_to_user(row)
@@ -275,12 +298,25 @@ class OCDifyDb:
         )
 
     def _row_to_trigger(self, row) -> TriggerTimestamp:
+        # Handle optional columns that might not exist in all queries
+        try:
+            user_id = row['user_id']
+        except (IndexError, KeyError):
+            user_id = None
+        
+        try:
+            trigger_word = row['trigger_word']
+        except (IndexError, KeyError):
+            trigger_word = None
+            
         return TriggerTimestamp(
             id=row['id'],
-            trigger_id=row.get('category_id', row.get('trigger_id')),  # Handle both old and new schema
+            category_id=row['category_id'],  # Use category_id directly from database
             song_id=row['song_id'],
+            user_id=user_id,
             start_time_ms=row['start_time_ms'],
             end_time_ms=row['end_time_ms'],
+            trigger_word=trigger_word,
             created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None
         )
 

@@ -1,7 +1,7 @@
 from typing import Optional, List
 import logging
 
-from .lyrics_searcher_interface import LyricsSearcherInterface, LyricsSearchResult
+from services.lyrics_finder_service.lyrics_searcher_interface import LyricsSearcherInterface, LyricsSearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +37,6 @@ class LyricsFinderService:
         album: Optional[str] = None,
         duration_ms: Optional[int] = None
     ) -> LyricsSearchResult:
-        """
-        Find synced lyrics with timestamps.
-        
-        Args:
-            artist: Artist name
-            title: Song title
-            album: Album name (optional)
-            duration_ms: Song duration in milliseconds (optional)
-            
-        Returns:
-            LyricsSearchResult with synced lyrics if found
-        """
         logger.info(f"Searching for synced lyrics: {artist} - {title}")
         
         try:
@@ -149,3 +137,54 @@ class LyricsFinderService:
             # Fallback to synced
             logger.info("Plain lyrics not found, trying synced lyrics...")
             return self.find_synced_lyrics(artist, title, album, duration_ms)
+
+
+if __name__ == '__main__':
+    from services.lyrics_finder_service.lyrics_apis.lrclib_searcher import LRCLibSearcher
+    import concurrent.futures
+    import datetime
+
+    songs_list = [
+        ("Angry Sea",	"Mother Mother",	"Touch Up",	185360),
+        ("Arms Tonite",	"Mother Mother",	"O My Heart",	216666),
+        ("Body Of Years",	"Mother Mother",	"O My Heart",	278400),
+        ("Burning Pile",	"Mother Mother",	"O My Heart",	262173),
+        ("Dirty Town",	"Mother Mother",	"Touch Up",	152800),
+        ("Do It All The Time",	"I DONT KNOW HOW BUT THEY FOUND ME",	"Do It All The Time",	167803),
+        ("Next Semester",	"Twenty One Pilots",	"Clancy",	234400),
+        ("O My Heart",	"Mother Mother",	"O My Heart",	211453),
+        ("Oh Ana",	"Mother Mother",	"Touch Up",	197080),
+        ("Overcompensate",	"Twenty One Pilots",	"Clancy",	236000),
+        ("Polynesia",	"Mother Mother",	"Touch Up",	139973),
+        ("Routines In The Night",	"Twenty One Pilots",	"Clancy",	202600),
+        ("SIXFT",	"I DONT KNOW HOW BUT THEY FOUND ME",	"GLOOM DIVISION",	204642),
+        ("Try To Change",	"Mother Mother",	"O My Heart",	241666),
+        ("Vignette",	"Twenty One Pilots",	"Clancy",	202133),
+        ("Wisdom",	"Mother Mother",	"O My Heart",	207960)
+    ]
+
+
+    lyrics_service = LyricsFinderService(LRCLibSearcher())
+
+    start = datetime.datetime.now()
+    lrc = lyrics_service
+    all_lyricses = []
+
+    def fetch_lyrics(song):
+        return lrc.find_synced_lyrics(
+            title=song[0],
+            artist=song[1],
+            album=song[2],
+            duration_ms=song[3]
+        )
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(executor.map(fetch_lyrics, songs_list))
+
+    for lyr in results:
+        print(lyr)
+        all_lyricses.append(lyr)
+
+    print(all_lyricses)
+    print(len(all_lyricses))
+    print(f"full time is: {datetime.datetime.now() - start}")
