@@ -12,10 +12,14 @@ import logging
 from typing import Dict, Set, Optional
 from datetime import datetime, timedelta
 
-from config.models import User
+import warnings
+from config.models import User, Song, TriggerTimestamp, TriggerScanStatus, SongStatus
 from services.user_service.user_service import UserService
 from services.ocdify_db.ocdify_db import OCDifyDb
-from main import get_spotify_client_for_user, scan_song_in_background
+from services.lyrics_finder_service.lyrics_finder_service import LyricsFinderService
+from services.lyrics_finder_service.lyrics_apis.lrclib_searcher import LRCLibSearcher
+from services.trigger_scanner_service.trigger_scanner_service import TriggerScannerService
+from services.trigger_service.trigger_service import get_trigger_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,9 @@ class UserMonitoringSession:
         self.trigger_timestamps = []
         self.current_trigger_index = 0
         self.buffer_ms = 3000
+        # Initialize services needed for scanning
+        self.lyrics_finder = LyricsFinderService(LRCLibSearcher())
+        self.trigger_scanner = TriggerScannerService(get_trigger_service(self.db))
         
     def start(self):
         """Start monitoring for this user"""
@@ -57,6 +64,18 @@ class UserMonitoringSession:
         logger.info(f"Stopped monitoring for user {self.user_id}")
         return True
         
+    def _get_spotify_client_for_user(self):
+        """Create a Spotipy client using the user's access token."""
+        try:
+            import spotipy
+            user = self.user_service.get_user_by_id(self.user_id)
+            if not user or not user.access_token:
+                return None
+            return spotipy.Spotify(auth=user.access_token)
+        except Exception as e:
+            logger.error(f"Failed to initialize Spotify client for user {self.user_id}: {e}")
+            return None
+        
     def _monitor_loop(self):
         """Main monitoring loop for this user"""
         sp = None
@@ -66,7 +85,7 @@ class UserMonitoringSession:
             try:
                 # Refresh Spotify client every 30 minutes or if it's None
                 if sp is None or (datetime.now() - last_token_refresh).total_seconds() > 1800:
-                    sp = get_spotify_client_for_user(self.user_id)
+                    sp = self._get_spotify_client_for_user()
                     last_token_refresh = datetime.now()
                     
                 if not sp:
@@ -119,20 +138,41 @@ class UserMonitoringSession:
                 self.db.update_song_isrc(db_song.id, isrc)
                 logger.info(f"Updated ISRC for song '{db_song.title}': {isrc}")
             
-            if db_song.status.value == 'SCANNED_CONTAMINATED':
-                # Load trigger timestamps
-                triggers = self.db.get_triggers_of_song(db_song.id, self.user_id)
+            # First, check if there are triggers for this song for this specific user
+            triggers = self.db.get_triggers_of_song(db_song.id, self.user_id)
+            if triggers:
                 self.trigger_timestamps = [(t.start_time_ms, t.end_time_ms) for t in triggers]
                 logger.info(f"User {self.user_id} - Loaded {len(self.trigger_timestamps)} trigger sections")
                 if self.trigger_timestamps:
                     logger.info(f"User {self.user_id} - Trigger sections: {self.trigger_timestamps}")
-            elif db_song.status.value == 'NOT_SCANNED':
-                # Scan in background
-                threading.Thread(target=scan_song_in_background, args=(db_song, self.user_id), daemon=True).start()
+            else:
+                # No triggers stored for this user. Check per-user song status
+                user_status = self.db.get_user_song_status(db_song.id, self.user_id)
+                if user_status:
+                    if user_status.trigger_scan_status == TriggerScanStatus.SCANNED_CLEAN:
+                        logger.info(f"User {self.user_id} - Song '{db_song.title}' previously scanned clean for this user")
+                    elif user_status.trigger_scan_status == TriggerScanStatus.SCANNED_CONTAMINATED:
+                        # Contaminated for this user but no triggers stored implies unsynced processing
+                        if not user_status.sync:
+                            msg = (
+                                f"User {self.user_id} - Song '{db_song.title}' has trigger words but no synced lyrics; "
+                                f"cannot skip sections (will be handled later by settings)"
+                            )
+                            warnings.warn(msg, UserWarning)
+                            logger.warning(msg)
+                        else:
+                            # Sync=True but no triggers found in DB; schedule a rescan as fallback
+                            logger.warning(f"User {self.user_id} - Expected synced triggers for '{db_song.title}' but none found; scheduling rescan")
+                            self._schedule_lyrics_scan(db_song)
+                    else:
+                        # NOT_SCANNED per-user, schedule scan
+                        self._schedule_lyrics_scan(db_song)
+                else:
+                    # No per-user status; create entry and schedule scan
+                    self.db.upsert_user_song_status(db_song.id, self.user_id, TriggerScanStatus.NOT_SCANNED, sync=False)
+                    self._schedule_lyrics_scan(db_song)
         else:
             # Add new song and scan it
-            from config.models import Song, SongStatus
-            
             # Extract ISRC from external_ids if available
             isrc = song_info.get('external_ids', {}).get('isrc')
             
@@ -148,9 +188,9 @@ class UserMonitoringSession:
             
             song_id = self.db.add_new_song(new_song)
             new_song.id = song_id
-            
-            # Scan in background
-            threading.Thread(target=scan_song_in_background, args=(new_song, self.user_id), daemon=True).start()
+            # Create per-user status and schedule lyrics scan
+            self.db.upsert_user_song_status(new_song.id, self.user_id, TriggerScanStatus.NOT_SCANNED, sync=False)
+            self._schedule_lyrics_scan(new_song)
             
     def _handle_trigger_skipping(self, current_timestamp, sp):
         """Handle skipping trigger sections"""
@@ -180,6 +220,80 @@ class UserMonitoringSession:
             else:
                 # We've passed this trigger
                 self.current_trigger_index = i + 1
+
+    def _schedule_lyrics_scan(self, song: Song):
+        """Schedule a lyrics scan for a song for this user in background."""
+        def run_scan():
+            try:
+                # Find lyrics preferring synced
+                result = self.lyrics_finder.find_any_lyrics(
+                    artist=song.artist,
+                    title=song.title,
+                    album=song.album,
+                    duration_ms=song.duration_ms,
+                    prefer_synced=True
+                )
+
+                if not result or not result.found:
+                    # Update general song status
+                    self.db.update_song_status(song.id, SongStatus.NO_RESULTS)
+                    # Update per-user status
+                    self.db.upsert_user_song_status(song.id, self.user_id, TriggerScanStatus.NOT_SCANNED, sync=False)
+                    logger.info(f"User {self.user_id} - No lyrics found for '{song.title}'")
+                    return
+
+                if getattr(result, 'synced_lyrics', None):
+                    # We have synced lyrics - scan and persist trigger timestamps
+                    synced_lines = result.synced_lyrics
+                    from services.lyrics_processor import create_trigger_timestamps_from_synced_lyrics
+                    trigger_timestamps = create_trigger_timestamps_from_synced_lyrics(
+                        synced_lyrics='\n'.join([f"[{int(line.start_timestamp/60000):02d}:{int((line.start_timestamp%60000)/1000):02d}.{int((line.start_timestamp%1000)/10):02d}]{line.line}" for line in synced_lines]),
+                        song_id=song.id,
+                        trigger_service=self.trigger_scanner.trigger_service,
+                        user_id=self.user_id
+                    )
+
+                    if trigger_timestamps:
+                        for t in trigger_timestamps:
+                            self.db.add_trigger_of_song(t)
+                        self.db.upsert_user_song_status(song.id, self.user_id, TriggerScanStatus.SCANNED_CONTAMINATED, sync=True)
+                        # Load timestamps for skipping immediately
+                        self.trigger_timestamps = [(t.start_time_ms, t.end_time_ms) for t in trigger_timestamps]
+                        logger.info(f"User {self.user_id} - Stored {len(trigger_timestamps)} triggers for '{song.title}'")
+                    else:
+                        self.db.upsert_user_song_status(song.id, self.user_id, TriggerScanStatus.SCANNED_CLEAN, sync=True)
+                        logger.info(f"User {self.user_id} - '{song.title}' scanned clean with synced lyrics")
+
+                    # Update general song status to SYNC_LYRICS
+                    self.db.update_song_status(song.id, SongStatus.SYNC_LYRICS)
+                    return
+
+                if getattr(result, 'plain_lyrics', None):
+                    # Plain lyrics present; quick check for triggers
+                    has_triggers = self.trigger_scanner.has_triggers(result.plain_lyrics, self.user_id)
+                    if has_triggers:
+                        # Contaminated but no sync lyrics
+                        self.db.upsert_user_song_status(song.id, self.user_id, TriggerScanStatus.SCANNED_CONTAMINATED, sync=False)
+                        warnings.warn(
+                            f"User {self.user_id} - Song '{song.title}' has trigger words but no synced lyrics; cannot skip sections",
+                            UserWarning
+                        )
+                        logger.warning(f"User {self.user_id} - '{song.title}' contaminated with plain lyrics only")
+                    else:
+                        self.db.upsert_user_song_status(song.id, self.user_id, TriggerScanStatus.SCANNED_CLEAN, sync=False)
+                        logger.info(f"User {self.user_id} - '{song.title}' scanned clean with plain lyrics")
+
+                    # Update general song status to PLAIN_LYRICS
+                    self.db.update_song_status(song.id, SongStatus.PLAIN_LYRICS)
+                    return
+
+                # Fallback: no lyrics content found
+                self.db.update_song_status(song.id, SongStatus.NO_RESULTS)
+                self.db.upsert_user_song_status(song.id, self.user_id, TriggerScanStatus.NOT_SCANNED, sync=False)
+            except Exception as e:
+                logger.error(f"User {self.user_id} - Error scanning song '{song.title}': {e}")
+
+        threading.Thread(target=run_scan, daemon=True).start()
 
 
 class MonitoringService:

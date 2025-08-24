@@ -5,16 +5,11 @@ from enum import IntEnum
 
 
 class SongStatus(IntEnum):
-    """Status of song scanning for trigger words"""
-    NOT_SCANNED = 0
-    SCANNED_CLEAN = 1
-    SCANNED_CONTAMINATED = 2
-
-class LyricsStatus(IntEnum):
-    """status of lyrics found"""
-    NO_LYRICS_FOUND = 0
-    LYRICS_FOUND = 1
-    SYNCED_LYRICS_FOUND = 2
+    """General lyrics status for a song (user-agnostic)"""
+    NOT_SCANNED = 0          # No attempt to fetch lyrics yet
+    NO_RESULTS = 1           # No lyrics found from providers
+    PLAIN_LYRICS = 2         # Plain (unsynced) lyrics available
+    SYNC_LYRICS = 3          # Synced (timestamped) lyrics available
 
 @dataclass
 class SyncedLyricsLine:
@@ -66,6 +61,31 @@ class TriggerTimestamp:
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now()
+
+
+class TriggerScanStatus(IntEnum):
+    """Per-user trigger scan result for a song"""
+    NOT_SCANNED = 0
+    SCANNED_CLEAN = 1
+    SCANNED_CONTAMINATED = 2
+
+
+@dataclass
+class UserSongStatus:
+    """Tracks a user's trigger scan status for a specific song"""
+    id: Optional[int] = None
+    song_id: int = 0
+    user_id: int = 0
+    trigger_scan_status: TriggerScanStatus = TriggerScanStatus.NOT_SCANNED
+    sync: bool = False  # True if scan used synced lyrics
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now()
+        if self.updated_at is None:
+            self.updated_at = datetime.now()
 
 
 @dataclass
