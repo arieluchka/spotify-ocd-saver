@@ -623,9 +623,9 @@ async def get_monitoring_status(current_user: User = Depends(get_current_user)):
 # suggested by copilot
 @app.get("/api/songs/contaminated", response_model=StandardResponse, tags=["Songs"])
 async def get_contaminated_songs(current_user: User = Depends(get_current_user)):
-    """Get all songs marked as contaminated"""
+    """Get all songs marked as contaminated for the current user"""
     try:
-        songs = db.get_contaminated_songs()
+        songs = db.get_contaminated_songs_for_user(current_user.id)
         
         songs_data = []
         for song in songs:
@@ -761,15 +761,16 @@ async def get_user_stats(current_user: User = Depends(get_current_user)):
     try:
         total_songs = db.get_song_count()
         total_triggers = db.get_trigger_count()
-        contaminated_songs = len(db.get_contaminated_songs())
-        unscanned_songs = len(db.get_unscanned_songs())
+        contaminated_songs = len(db.get_contaminated_songs_for_user(current_user.id))
+        unscanned_songs = len(db.get_unscanned_user_songs(current_user.id))
+        clean_songs = len(db.get_clean_songs_for_user(current_user.id))
         user_categories = len(db.get_trigger_categories(user_id=current_user.id, include_global=False))
         
         stats_data = StatsResponse(
             total_songs=total_songs,
             total_triggers=total_triggers,
             contaminated_songs=contaminated_songs,
-            clean_songs=total_songs - contaminated_songs - unscanned_songs,
+            clean_songs=clean_songs,
             unscanned_songs=unscanned_songs,
             user_categories=user_categories,
             monitoring_active=monitoring_service.is_monitoring_user(current_user.id)

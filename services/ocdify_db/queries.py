@@ -48,6 +48,21 @@ CREATE_SONGS_TABLE = '''
     )
 '''
 
+CREATE_USER_SONG_STATUSES_TABLE = '''
+    CREATE TABLE IF NOT EXISTS user_song_statuses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        song_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        trigger_scan_status INTEGER NOT NULL DEFAULT 0,
+        sync BOOLEAN NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (song_id) REFERENCES songs (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        UNIQUE(song_id, user_id)
+    )
+'''
+
 CREATE_TRIGGER_TIMESTAMPS_TABLE = '''
     CREATE TABLE IF NOT EXISTS trigger_timestamps (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +89,10 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_trigger_timestamps_song_id ON trigger_timestamps(song_id)',
     'CREATE INDEX IF NOT EXISTS idx_trigger_timestamps_category_id ON trigger_timestamps(category_id)',
     'CREATE INDEX IF NOT EXISTS idx_trigger_timestamps_user_id ON trigger_timestamps(user_id)',
+    'CREATE INDEX IF NOT EXISTS idx_user_song_statuses_song_id ON user_song_statuses(song_id)',
+    'CREATE INDEX IF NOT EXISTS idx_user_song_statuses_user_id ON user_song_statuses(user_id)',
+    'CREATE INDEX IF NOT EXISTS idx_user_song_statuses_status ON user_song_statuses(trigger_scan_status)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_user_song_statuses_song_user ON user_song_statuses(song_id, user_id)',
 ]
 
 # User queries
@@ -138,6 +157,50 @@ SEARCH_SONGS = '''
 '''
 
 COUNT_SONGS = 'SELECT COUNT(*) FROM songs'
+
+# User song status queries
+INSERT_OR_UPDATE_USER_SONG_STATUS = '''
+    INSERT INTO user_song_statuses (song_id, user_id, trigger_scan_status, sync)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(song_id, user_id) DO UPDATE SET
+        trigger_scan_status = excluded.trigger_scan_status,
+        sync = excluded.sync,
+        updated_at = CURRENT_TIMESTAMP
+'''
+
+SELECT_USER_SONG_STATUS_BY_SONG_AND_USER = '''
+    SELECT * FROM user_song_statuses WHERE song_id = ? AND user_id = ?
+'''
+
+UPDATE_USER_SONG_STATUS = '''
+    UPDATE user_song_statuses 
+    SET trigger_scan_status = ?, sync = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE song_id = ? AND user_id = ?
+'''
+
+SELECT_CONTAMINATED_SONGS_FOR_USER = '''
+    SELECT s.*
+    FROM user_song_statuses uss
+    JOIN songs s ON s.id = uss.song_id
+    WHERE uss.user_id = ? AND uss.trigger_scan_status = ?
+    ORDER BY s.title, s.artist
+'''
+
+SELECT_UNSCANNED_USER_SONGS = '''
+    SELECT s.*
+    FROM user_song_statuses uss
+    JOIN songs s ON s.id = uss.song_id
+    WHERE uss.user_id = ? AND uss.trigger_scan_status = ?
+    ORDER BY uss.created_at
+'''
+
+SELECT_CLEAN_SONGS_FOR_USER = '''
+    SELECT s.*
+    FROM user_song_statuses uss
+    JOIN songs s ON s.id = uss.song_id
+    WHERE uss.user_id = ? AND uss.trigger_scan_status = ?
+    ORDER BY s.title, s.artist
+'''
 
 # Trigger category queries
 INSERT_TRIGGER_CATEGORY = '''

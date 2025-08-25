@@ -4,7 +4,7 @@ from typing import List, Optional
 from contextlib import contextmanager
 from datetime import datetime
 
-from config.models import Song, TriggerTimestamp, SongStatus, User, TriggerCategory
+from config.models import Song, TriggerTimestamp, SongStatus, User, TriggerCategory, UserSongStatus, TriggerScanStatus
 from .queries import *
 
 
@@ -39,6 +39,7 @@ class OCDifyDb:
             cursor.execute(CREATE_TRIGGER_CATEGORIES_TABLE)
             cursor.execute(CREATE_SONGS_TABLE)
             cursor.execute(CREATE_TRIGGER_TIMESTAMPS_TABLE)
+            cursor.execute(CREATE_USER_SONG_STATUSES_TABLE)
 
             # Create indexes
             for index_query in INDEXES:
@@ -72,6 +73,9 @@ class OCDifyDb:
             if 'trigger_categories' not in existing_tables:
                 print("Creating trigger_categories table...")
                 cursor.execute(CREATE_TRIGGER_CATEGORIES_TABLE)
+            if 'user_song_statuses' not in existing_tables:
+                print("Creating user_song_statuses table...")
+                cursor.execute(CREATE_USER_SONG_STATUSES_TABLE)
 
             # Ensure all tables and indexes exist (for partial migrations)
             self.create_tables()
@@ -167,16 +171,59 @@ class OCDifyDb:
             return cursor.rowcount
 
     def get_contaminated_songs(self) -> List[Song]:
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(SELECT_CONTAMINATED_SONGS, (SongStatus.SCANNED_CONTAMINATED.value,))
-            rows = cursor.fetchall()
-            return [self._row_to_song(row) for row in rows]
+        # Deprecated with per-user statuses; kept for backward compatibility
+        # Now contamination is tracked per user in user_song_statuses
+        return []
 
     def get_unscanned_songs(self) -> List[Song]:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(SELECT_UNSCANNED_SONGS, (SongStatus.NOT_SCANNED.value,))
+            rows = cursor.fetchall()
+            return [self._row_to_song(row) for row in rows]
+
+    # New per-user song status methods
+    def upsert_user_song_status(self, song_id: int, user_id: int, trigger_status: TriggerScanStatus, sync: bool) -> bool:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(INSERT_OR_UPDATE_USER_SONG_STATUS, (song_id, user_id, trigger_status.value, int(sync)))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_user_song_status(self, song_id: int, user_id: int) -> Optional[UserSongStatus]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_USER_SONG_STATUS_BY_SONG_AND_USER, (song_id, user_id))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_user_song_status(row)
+            return None
+
+    def update_user_song_status(self, song_id: int, user_id: int, trigger_status: TriggerScanStatus, sync: bool) -> bool:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(UPDATE_USER_SONG_STATUS, (trigger_status.value, int(sync), song_id, user_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_contaminated_songs_for_user(self, user_id: int) -> List[Song]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_CONTAMINATED_SONGS_FOR_USER, (user_id, TriggerScanStatus.SCANNED_CONTAMINATED.value))
+            rows = cursor.fetchall()
+            return [self._row_to_song(row) for row in rows]
+
+    def get_unscanned_user_songs(self, user_id: int) -> List[Song]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_UNSCANNED_USER_SONGS, (user_id, TriggerScanStatus.NOT_SCANNED.value))
+            rows = cursor.fetchall()
+            return [self._row_to_song(row) for row in rows]
+
+    def get_clean_songs_for_user(self, user_id: int) -> List[Song]:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(SELECT_CLEAN_SONGS_FOR_USER, (user_id, TriggerScanStatus.SCANNED_CLEAN.value))
             rows = cursor.fetchall()
             return [self._row_to_song(row) for row in rows]
 
@@ -328,6 +375,17 @@ class OCDifyDb:
             access_token=row['access_token'],
             refresh_token=row['refresh_token'],
             token_expires_at=datetime.fromisoformat(row['token_expires_at']) if row['token_expires_at'] else None,
+            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+            updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
+        )
+
+    def _row_to_user_song_status(self, row) -> UserSongStatus:
+        return UserSongStatus(
+            id=row['id'] if 'id' in row.keys() else None,
+            song_id=row['song_id'],
+            user_id=row['user_id'],
+            trigger_scan_status=TriggerScanStatus(row['trigger_scan_status']),
+            sync=bool(row['sync']),
             created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
             updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
         )

@@ -11,7 +11,7 @@ The OCDify database is an SQLite database designed to support a Spotify monitori
 The database consists of 4 main tables that work together to provide comprehensive trigger word detection and user management:
 
 1. **users** - User authentication and Spotify integration
-2. **songs** - Song metadata and scanning status
+2. **songs** - Song metadata and general lyrics availability status
 3. **trigger_categories** - User-defined categories of trigger words
 4. **trigger_timestamps** - Specific occurrences of trigger words in songs
 
@@ -48,7 +48,7 @@ The database consists of 4 main tables that work together to provide comprehensi
 
 ### 2. `songs` Table
 
-**Purpose**: Stores song metadata and tracks the scanning status for trigger word detection.
+**Purpose**: Stores song metadata and tracks lyrics availability (user-agnostic).
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -57,7 +57,7 @@ The database consists of 4 main tables that work together to provide comprehensi
 | `artist` | TEXT | NOT NULL | Primary artist name |
 | `album` | TEXT | NOT NULL | Album name |
 | `duration_ms` | INTEGER | NOT NULL | Song duration in milliseconds |
-| `status` | INTEGER | NOT NULL DEFAULT 0 | Scanning status (see SongStatus enum) |
+| `status` | INTEGER | NOT NULL DEFAULT 0 | Lyrics status (see SongStatus enum) |
 | `spotify_id` | TEXT | UNIQUE | Spotify's unique track ID |
 | `isrc` | TEXT | NULL | International Standard Recording Code |
 | `lrclib_id` | TEXT | NULL | LRCLib ID for synced lyrics |
@@ -66,9 +66,10 @@ The database consists of 4 main tables that work together to provide comprehensi
 | `updated_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Last song update timestamp |
 
 **Status Values** (SongStatus enum):
-- `0` - NOT_SCANNED: Song hasn't been analyzed yet
-- `1` - SCANNED_CLEAN: Song analyzed, no trigger words found
-- `2` - SCANNED_CONTAMINATED: Song analyzed, trigger words found
+- `0` - NOT_SCANNED: Lyrics have not been attempted
+- `1` - NO_RESULTS: No lyrics were found
+- `2` - PLAIN_LYRICS: Plain (unsynced) lyrics available
+- `3` - SYNC_LYRICS: Synced (timestamped) lyrics available
 
 **Role**:
 - Central repository for all song information
@@ -233,9 +234,9 @@ CREATE INDEX idx_trigger_timestamps_user_id ON trigger_timestamps(user_id)
 ### 2. Song Scanning Flow
 1. New song detected → added to `songs` table with status `NOT_SCANNED`
 2. Lyrics fetched from LRCLib or other sources
-3. Song scanned against active `trigger_categories`
+3. Song scanned against active `trigger_categories` per-user
 4. `trigger_timestamps` created for each detection
-5. Song status updated to `SCANNED_CLEAN` or `SCANNED_CONTAMINATED`
+5. Per-user status updated to `SCANNED_CLEAN` or `SCANNED_CONTAMINATED` with `sync` flag
 
 ### 3. Playback Monitoring Flow
 1. Current song identified by `spotify_id`
