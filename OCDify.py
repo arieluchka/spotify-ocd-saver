@@ -1,4 +1,4 @@
-from config.models import Song
+from common.models.models import Song
 
 
 class OCDify:

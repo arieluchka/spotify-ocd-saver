@@ -10,18 +10,15 @@ from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse
-from typing import Dict, Any, Optional, List
+from typing import Optional
 import logging
 from datetime import datetime
-import threading
-import json
-import os
 
 from services.ocdify_db.ocdify_db import get_database
 from services.user_service.user_service import get_user_service
 from services.trigger_service.trigger_service import get_trigger_service
 from services.trigger_scanner_service.trigger_scanner_service import TriggerScannerService
-from config.models import User, TriggerCategory, SongStatus
+from common.models.models import User, TriggerCategory
 from services.monitoring_service import get_monitoring_service
 
 # Import API models
@@ -39,7 +36,7 @@ from services.api_models.utility_models import (
     StatsResponse
 )
 from services.api_models.common_models import StandardResponse
-from config.config import get_config
+from common.config.config import get_config
 
 # Load configuration
 config = get_config()

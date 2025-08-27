@@ -4,7 +4,7 @@ import logging
 import json
 
 from services.lyrics_finder_service.lyrics_searcher_interface import LyricsSearcherInterface, LyricsSearchResult
-from config.models import SyncedLyricsLine
+from common.models.models import SyncedLyricsLine
 
 logger = logging.getLogger(__name__)
 

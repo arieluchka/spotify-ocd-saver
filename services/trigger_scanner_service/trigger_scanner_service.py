@@ -1,9 +1,9 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional
 import logging
 import re
 from dataclasses import dataclass
 
-from config.models import SyncedLyricsLine
+from common.models.models import SyncedLyricsLine
 from services.trigger_service.trigger_service import TriggerService
 
 logger = logging.getLogger(__name__)

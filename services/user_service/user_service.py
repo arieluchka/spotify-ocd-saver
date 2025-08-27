@@ -5,8 +5,8 @@ import os
 import base64
 from cryptography.fernet import Fernet
 
-from config.models import User
-from config.config import get_config
+from common.models.models import User
+from common.config.config import get_config
 from services.ocdify_db.ocdify_db import OCDifyDb
 
 logger = logging.getLogger(__name__)

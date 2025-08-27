@@ -1,6 +1,6 @@
 import re
 from typing import List, Tuple, Optional
-from config.models import SyncedLyricsLine, TriggerTimestamp
+from common.models.models import SyncedLyricsLine, TriggerTimestamp
 from services.trigger_service.trigger_service import TriggerService
 
 

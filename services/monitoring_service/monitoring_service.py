@@ -10,9 +10,8 @@ import threading
 import time
 import logging
 from typing import Dict, Set, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from config.models import User
 from services.user_service.user_service import UserService
 from services.ocdify_db.ocdify_db import OCDifyDb
 from main import get_spotify_client_for_user, scan_song_in_background
@@ -131,7 +130,7 @@ class UserMonitoringSession:
                 threading.Thread(target=scan_song_in_background, args=(db_song, self.user_id), daemon=True).start()
         else:
             # Add new song and scan it
-            from config.models import Song, SongStatus
+            from common.models.models import Song, SongStatus
             
             # Extract ISRC from external_ids if available
             isrc = song_info.get('external_ids', {}).get('isrc')

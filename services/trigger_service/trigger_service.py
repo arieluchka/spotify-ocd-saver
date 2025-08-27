@@ -1,8 +1,8 @@
-from typing import List, Optional, Set
+from typing import List, Optional
 import logging
 import re
 
-from config.models import TriggerCategory, TriggerTimestamp
+from common.models.models import TriggerCategory
 from services.ocdify_db.ocdify_db import OCDifyDb
 
 logger = logging.getLogger(__name__)

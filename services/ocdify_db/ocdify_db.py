@@ -4,7 +4,7 @@ from typing import List, Optional
 from contextlib import contextmanager
 from datetime import datetime
 
-from config.models import Song, TriggerTimestamp, SongStatus, User, TriggerCategory
+from common.models.models import Song, TriggerTimestamp, SongStatus, User, TriggerCategory
 from .queries import *
 
 

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List
 from dataclasses import dataclass
 
-from config.models import SyncedLyricsLine
+from common.models.models import SyncedLyricsLine
 
 
 @dataclass

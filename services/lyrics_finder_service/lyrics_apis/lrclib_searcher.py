@@ -1,16 +1,12 @@
 import datetime
-import time
 import warnings
 
 import requests
 from typing import Optional, List
 import logging
-import json
-
-from Tools.scripts.highlight import alltt_escape
 
 from services.lyrics_finder_service.lyrics_searcher_interface import LyricsSearcherInterface, LyricsSearchResult
-from config.models import SyncedLyricsLine
+from common.models.models import SyncedLyricsLine
 
 logger = logging.getLogger(__name__)
 from lrclib import LrcLibAPI
